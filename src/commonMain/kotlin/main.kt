@@ -29,8 +29,6 @@ suspend fun main() = Korge(
     window.alpha = 0.0
 
 
-
-
     val inertia = Inertia()
     val physics = Physics()
 
@@ -41,9 +39,11 @@ suspend fun main() = Korge(
 
     // create a collision object for scrolling item deletion. we place this item offstage to the left
     // and watch for collisions to delete objects.
+    debug("creating collision object")
     val deleteZone = solidRect(width = 10.0, height = (stage.height * 2.0), color = Colors.RED)
     deleteZone.centerOnStage()
-    deleteZone.x = -(stage.width * 2.0)
+    deleteZone.x = -100.0
+//    deleteZone.x = -(stage.width * 2.0)
     stage.addChild(deleteZone)
 
     // create the background layer
@@ -66,19 +66,23 @@ suspend fun main() = Korge(
 
 
     // create the avatar
+    debug("creating the avatar")
     var launched = false
     val avatar = circle(
         radius = 20.0,
         stroke = Colors.BLACK,
         strokeThickness = 2.0,
         fill = Colors.RED,
-        )
+    )
+    var avatarActualX = avatar.x
+    var avatarActualY = avatar.y
     avatar.x = 0.0
     avatar.y = (stage.height - (avatar.radius * 2.0))
     stage.addChild(avatar)
 
 
     // create the score
+    debug("creating the score")
     var distance = 0.0
     val scoreBox = text("0.00  meters", color = Colors.BLACK)
     scoreBox.addUpdater {
@@ -87,23 +91,45 @@ suspend fun main() = Korge(
         scoreBox.alignRightToRightOf(window, padding = 10)
     }
 
+    debug("adding the updater")
     addFixedUpdater(stage.gameWindow.timePerFrame) {
         if (launched) {
             // we check to see if we are done, if run is negative that means we have
             // hit the ground and skidded to a stop, set all movement to 0 and tally score
             if (inertia.run < 0) {
+                debug("Round has ended, score ${distance.roundDecimalPlaces(2)}")
                 inertia.rise = 0.0
                 inertia.run = 0.0
-
             }
-            // avatar physics slows and falls
-            avatar.x += inertia.run
-            avatar.y -= inertia.rise    // rise moves toward 0, the top of the window, so we subtract to float
-            inertia.run *= physics.windResist
-            inertia.rise += physics.gravity
+
+
+            // we do the actual movement of the avatar here, later on we position it on screen
+            avatarActualX += inertia.run
+            avatarActualY -= inertia.rise
+
+
+            // TODO: CHECK MOVEMENT HERE FOR RISE AND RUN, KEEP THE AVATAR CENTERED
+            // if the avatar has moved past mid-screen, we scroll the background, not move the avatar
+            if (avatar.x < halfX) {
+                debug("nothing", "avatar run")
+            } else {
+                debug("nothing", "screen run")
+            }
+
+            // TODO: WE NEED TO SCROLL THE BACKGROUND UP AND DOWN WITH THE RISE OF THE AVATAR
+            // if the avatar has moved past mid-screen, we move the background up or down
+            if (avatar.y < halfY) {
+                debug("nothing", "avatar rise")
+            } else {
+                debug("nothing", "screen rise")
+            }
 
             // count score
             distance += inertia.run / 10
+
+            // We adjust the inertia using the physics numbers here, after all movement is completed this frame
+            inertia.rise += physics.gravity
+            inertia.run *= physics.windResist
 
             // landing
             if (avatar.collidesWith(groundLayer)) {
@@ -114,8 +140,11 @@ suspend fun main() = Korge(
         } else {
             if (input.mouseButtons > 0) {
                 debug("input, launching", "fixedUpdater")
-                inertia.rise += 30.0
-                inertia.run += 10
+                /** HERE IS THE KICK VALUES
+                 *
+                 */
+                inertia.rise += 90.0
+                inertia.run += 10.0
                 launched = true
             }
         }
@@ -128,8 +157,9 @@ suspend fun main() = Korge(
             text.x = 5.0
             text.y = 5.0
             debug("avatar info box launched")
-            while(true) {
-                text.text = "XY: ${avatar.x + avatar.radius}, ${avatar.y + avatar.radius} \nInertia: ${inertia.rise}, ${inertia.run}"
+            while (true) {
+                text.text =
+                    "XY: ${avatar.x + avatar.radius}, ${avatar.y + avatar.radius} \nInertia: ${inertia.rise}, ${inertia.run}"
                 delay(stage?.gameWindow?.timePerFrame ?: 1.milliseconds)
             }
         }
@@ -155,7 +185,7 @@ suspend fun main() = Korge(
 data class Inertia(
     var rise: Double = 0.0,
     var run: Double = 0.0,
-    )
+)
 
 /**
  * physics holds items we use to calculate movement changes.
@@ -167,7 +197,7 @@ data class Physics(
     val gravity: Double = -0.8,
     val windResist: Double = 0.9999,
     val friction: Double = 1.0,
-    )
+)
 
 fun debug(message: String, name: String = "UNKNOWN") {
     val now = LocalDateTime.now()
