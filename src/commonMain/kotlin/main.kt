@@ -10,6 +10,10 @@ import com.soywiz.korma.math.*
 import java.time.LocalDateTime
 
 
+// TODO: CREATE FUN TO RESET VALUES AND START NEW GAME
+// TODO: USE THIS TO INITIALIZE GAME AND MAKE GAME OVER SCREEN
+// TODO: WITH IT USING NEW GAME BUTTON
+
 const val DEBUG_COLOR = "\u001b[33;1m"
 const val RESET_COLOR = "\u001b[0m"
 
@@ -74,32 +78,33 @@ suspend fun main() = Korge(
         strokeThickness = 2.0,
         fill = Colors.RED,
     )
+    avatar.x = 0.0
+    avatar.alignBottomToTopOf(groundLayer, 10)
     var avatarActualX = avatar.x
     var avatarActualY = avatar.y
-    avatar.x = 0.0
-    avatar.y = (stage.height - (avatar.radius * 2.0))
     stage.addChild(avatar)
 
 
     // create the score
     debug("creating the score")
-    var distance = 0.0
     val scoreBox = text("0.00  meters", color = Colors.BLACK)
     scoreBox.addUpdater {
-        text = "${distance.roundDecimalPlaces(2)} meters"
+        text = "${(avatarActualX / 10).roundDecimalPlaces(2)} meters"
         scoreBox.alignTopToTopOf(window, padding = 10)
         scoreBox.alignRightToRightOf(window, padding = 10)
     }
 
     debug("adding the updater")
-    addFixedUpdater(stage.gameWindow.timePerFrame) {
+    addFixedUpdater(30.timesPerSecond) {
+//    addFixedUpdater(stage.gameWindow.timePerFrame) {
         if (launched) {
             // we check to see if we are done, if run is negative that means we have
             // hit the ground and skidded to a stop, set all movement to 0 and tally score
-            if (inertia.run < 0) {
-                debug("Round has ended, score ${distance.roundDecimalPlaces(2)}")
+            if (inertia.run <= 0) {
+                debug("Round has ended, score ${avatarActualX.roundDecimalPlaces(2)}")
                 inertia.rise = 0.0
                 inertia.run = 0.0
+                launched = false
             }
 
 
@@ -110,22 +115,31 @@ suspend fun main() = Korge(
 
             // TODO: CHECK MOVEMENT HERE FOR RISE AND RUN, KEEP THE AVATAR CENTERED
             // if the avatar has moved past mid-screen, we scroll the background, not move the avatar
-            if (avatar.x < halfX) {
-                debug("nothing", "avatar run")
+            if (avatarActualX <= halfX) {
+                // if the avatar hasn't moved yet to halfway across the screen, move the avatar
+                avatar.x = avatarActualX
             } else {
-                debug("nothing", "screen run")
+                // else we want to scroll the background behind the avatar
+                skyline.x -= (inertia.run * 0.9)
             }
 
             // TODO: WE NEED TO SCROLL THE BACKGROUND UP AND DOWN WITH THE RISE OF THE AVATAR
             // if the avatar has moved past mid-screen, we move the background up or down
-            if (avatar.y < halfY) {
-                debug("nothing", "avatar rise")
-            } else {
-                debug("nothing", "screen rise")
+            when (avatarActualY) {
+                in halfY.toDouble()..(stage.actualVirtualHeight + avatar.radius) -> {
+                    avatar.y = avatarActualY
+                    groundLayer.visible = true
+                }
+                else -> {
+                    avatar.y = halfY.toDouble()
+                    // move the background in a parallax manner
+                    groundLayer.visible = false
+                    skyline.y += (inertia.rise * 0.5)
+                }
             }
 
-            // count score
-            distance += inertia.run / 10
+//            avatar.x = avatarActualX
+//            avatar.y = avatarActualY
 
             // We adjust the inertia using the physics numbers here, after all movement is completed this frame
             inertia.rise += physics.gravity
@@ -141,10 +155,11 @@ suspend fun main() = Korge(
             if (input.mouseButtons > 0) {
                 debug("input, launching", "fixedUpdater")
                 /** HERE IS THE KICK VALUES
-                 *
+                 *8888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
                  */
-                inertia.rise += 90.0
-                inertia.run += 10.0
+                avatar.alignBottomToTopOf(groundLayer, 10)
+                inertia.rise += 20.0
+                inertia.run += 30.0
                 launched = true
             }
         }
@@ -159,7 +174,7 @@ suspend fun main() = Korge(
             debug("avatar info box launched")
             while (true) {
                 text.text =
-                    "XY: ${avatar.x + avatar.radius}, ${avatar.y + avatar.radius} \nInertia: ${inertia.rise}, ${inertia.run}"
+                    "XY: ${avatarActualX + avatar.radius}, ${(avatarActualY + avatar.radius)} \nInertia: ${inertia.rise}, ${inertia.run}"
                 delay(stage?.gameWindow?.timePerFrame ?: 1.milliseconds)
             }
         }
@@ -195,7 +210,7 @@ data class Inertia(
  */
 data class Physics(
     val gravity: Double = -0.8,
-    val windResist: Double = 0.9999,
+    val windResist: Double = 0.99,
     val friction: Double = 1.0,
 )
 
