@@ -1,18 +1,20 @@
 import com.soywiz.klock.*
 import com.soywiz.korge.*
-import com.soywiz.korge.time.*
+import com.soywiz.korge.input.*
 import com.soywiz.korge.view.*
 import com.soywiz.korim.color.*
+import com.soywiz.korim.font.*
 import com.soywiz.korim.format.*
-import com.soywiz.korio.async.*
 import com.soywiz.korio.file.std.*
 import com.soywiz.korma.math.*
 import java.time.LocalDateTime
 
+// needed for debug options at end of main
+//import com.soywiz.korio.async.*
+//import com.soywiz.korge.time.*
 
-// TODO: CREATE FUN TO RESET VALUES AND START NEW GAME
-// TODO: USE THIS TO INITIALIZE GAME AND MAKE GAME OVER SCREEN
-// TODO: WITH IT USING NEW GAME BUTTON
+
+// TODO: THE END OF GAME MENU LOOPS CREATION, FIND A WAY TO FIX.
 
 const val DEBUG_COLOR = "\u001b[33;1m"
 const val RESET_COLOR = "\u001b[0m"
@@ -24,10 +26,15 @@ suspend fun main() = Korge(
     virtualHeight = 720,
 ) {
 
+
     // create object for even handling
     val input = views.input
 
-    // create viewable area window
+    // load fonts
+    val menuFont = resourcesVfs["Freedom.ttf"].readTtfFont()
+    val scoreFont = resourcesVfs["PocketCalculator.ttf"].readTtfFont()
+
+    // create viewable area window for reference
     val window = solidRect(stage.actualVirtualWidth, stage.actualVirtualHeight)
     window.centerOnStage()
     window.alpha = 0.0
@@ -72,6 +79,7 @@ suspend fun main() = Korge(
     // create the avatar
     debug("creating the avatar")
     var launched = false
+    var gameOver = false
     val avatar = circle(
         radius = 20.0,
         stroke = Colors.BLACK,
@@ -94,10 +102,175 @@ suspend fun main() = Korge(
         scoreBox.alignRightToRightOf(window, padding = 10)
     }
 
+    // updater to create end of game screen
+    window.addFixedUpdater(1.timesPerSecond) {
+        // game over actions
+        /// this is outside updater loop, all option must update self
+        if (gameOver) {
+            debug("game over menu start")
+
+            // define menu button sizes
+            val buttonPadding = 35
+            val buttonWidth = 175
+            val buttonHeight = 100
+            val buttonCorners = 10
+
+            // show game over message and score
+            // TODO: CAN WE BLUR BACKGROUND AND HAVE DATA OVER?
+            debug("Creating game over screen")
+            // container to hold game over screen
+            val gameOverContainer = container()
+
+            // background for visibility
+            val darkerOverlay = solidRect(
+                width = actualVirtualWidth.toDouble(),
+                height = actualVirtualHeight.toDouble(),
+                color = Colors.LIGHTGRAY
+            )
+            darkerOverlay.alpha = 0.8
+            gameOverContainer.addChild(darkerOverlay)
+            val gameOverBackground = solidRect(
+                width = halfX.toDouble(),
+                height = actualVirtualHeight.toDouble(),
+                color = Colors.BLACK,
+            )
+            gameOverBackground.centerOnStage()
+            gameOverBackground.alpha = 0.5
+            gameOverContainer.addChild(gameOverBackground)
+
+            // load game over message
+            val gameOverText = text(
+                text = "GAME OVER",
+                textSize = 96.0,
+                color = Colors.YELLOW,
+                font = menuFont,
+            )
+            gameOverText.centerXOnStage()
+            gameOverText.y = (halfY / 2.0)
+            gameOverContainer.addChild(gameOverText)
+
+            // load score
+            // TODO: COUNT UP SCORE, THEN SHOW POINTS EARNED
+            // TODO: SHOW HIGH SCORE, BONUS PTS
+            val gameOverScore = text(
+                text = "${avatarActualX.roundDecimalPlaces(2)} meters",
+                textSize = 48.0,
+                color = Colors.YELLOW,
+                font = scoreFont,
+            )
+            gameOverScore.centerXOnStage()
+            gameOverScore.alignTopToBottomOf(gameOverText)
+            gameOverContainer.addChild(gameOverScore)
+
+            // show end of game options
+            val replayButton = roundRect(
+                width = buttonWidth,
+                height = buttonHeight,
+                rx = buttonCorners,
+                fill = Colors.BLACK,
+                stroke = Colors.WHITE,
+                strokeThickness = 2.0,
+            )
+            replayButton.centerOnStage()
+            replayButton.alignTopToBottomOf(gameOverScore, padding = buttonPadding)
+            val replayText = text(
+                text = "Replay",
+                textSize = 24.0,
+                color = Colors.WHITE,
+                font = menuFont,
+            )
+            replayText.centerOn(replayButton)
+            gameOverContainer.addChild(replayButton)
+            gameOverContainer.addChild(replayText)
+
+            val upgradeButton = roundRect(
+                width = buttonWidth,
+                height = buttonHeight,
+                rx = buttonCorners,
+                fill = Colors.BLACK,
+                stroke = Colors.WHITE,
+                strokeThickness = 2.0,
+            )
+            upgradeButton.alignTopToTopOf(replayButton)
+            upgradeButton.alignRightToLeftOf(replayButton, padding = buttonPadding)
+            val upgradeText = text(
+                text = "upgrade",
+                textSize = 24.0,
+                color = Colors.WHITE,
+                font = menuFont,
+            )
+            upgradeText.centerOn(upgradeButton)
+            gameOverContainer.addChild(upgradeButton)
+            gameOverContainer.addChild(upgradeText)
+
+            val quitButton = roundRect(
+                width = buttonWidth,
+                height = buttonHeight,
+                rx = buttonCorners,
+                fill = Colors.BLACK,
+                stroke = Colors.WHITE,
+                strokeThickness = 2.0,
+            )
+            quitButton.alignTopToTopOf(replayButton)
+            quitButton.alignLeftToRightOf(replayButton, padding = buttonPadding)
+            val quitText = text(
+                text = "exit game",
+                textSize = 24.0,
+                color = Colors.WHITE,
+                font = menuFont,
+            )
+            quitText.centerOn(quitButton)
+            gameOverContainer.addChild(quitButton)
+            gameOverContainer.addChild(quitText)
+
+            // listen for mouse input
+            debug("listening for menu choice")
+            gameOverContainer.addUpdater {
+                if (input.mouseButtons == 1) {
+                    debug("mouse click in menu", "quit menu")
+                    if (quitButton.mouse.isOver) {
+                        debug("quit clicked", "quit menu")
+                        stage?.removeChildren()
+                        this@Korge.gameWindow.close()
+                    }
+                    if (upgradeButton.mouse.isOver) {
+                        debug("upgrade clicked", "quit menu")
+                    }
+                    if (replayButton.mouse.isOver) {
+                        debug("replay clicked", "quit menu")
+                        debug("resetting game...")
+
+                        debug("removing game over screen...")
+                        gameOverContainer.removeChildren()
+
+                        debug("reset inertia values")
+                        inertia.rise = 0.0
+                        inertia.run = 0.0
+
+                        debug("resetting the background")
+                        skyBox.color = Colors.WHITE
+                        skyline.y = actualVirtualHeight - skyline.height
+                        skyline.x = 0.0
+                        groundLayer.centerOnStage()
+                        groundLayer.y = (actualVirtualHeight - (groundLayer.height / 2))
+
+                        debug("resetting the avatar")
+                        launched = false
+                        gameOver = false
+                        avatar.x = 0.0
+                        avatar.alignBottomToTopOf(groundLayer, 10)
+                        avatarActualX = avatar.x
+                        avatarActualY = avatar.y
+                    }
+                }
+            }
+        }
+    }
+
     debug("adding the updater")
     addFixedUpdater(30.timesPerSecond) {
 //    addFixedUpdater(stage.gameWindow.timePerFrame) {
-        if (launched) {
+        if (launched && !gameOver) {
             // we check to see if we are done, if run is negative that means we have
             // hit the ground and skidded to a stop, set all movement to 0 and tally score
             if (inertia.run <= 0) {
@@ -105,6 +278,7 @@ suspend fun main() = Korge(
                 inertia.rise = 0.0
                 inertia.run = 0.0
                 launched = false
+                gameOver = true
             }
 
 
@@ -130,6 +304,7 @@ suspend fun main() = Korge(
                     avatar.y = avatarActualY
                     groundLayer.visible = true
                 }
+
                 else -> {
                     avatar.y = halfY.toDouble()
                     // move the background in a parallax manner
@@ -154,6 +329,7 @@ suspend fun main() = Korge(
         } else {
             if (input.mouseButtons > 0) {
                 debug("input, launching", "fixedUpdater")
+                debug("mouse ${input.mouseButtons}", "fixedUpdater")
                 /** HERE IS THE KICK VALUES
                  *8888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
                  */
@@ -165,38 +341,43 @@ suspend fun main() = Korge(
         }
     }
 
-    // avatar info debug
-    text("", color = Colors.BLACK) {
-        val text = this
-        launchImmediately {
-            text.x = 5.0
-            text.y = 5.0
-            debug("avatar info box launched")
-            while (true) {
-                text.text =
-                    "XY: ${avatarActualX + avatar.radius}, ${(avatarActualY + avatar.radius)} \nInertia: ${inertia.rise}, ${inertia.run}"
-                delay(stage?.gameWindow?.timePerFrame ?: 1.milliseconds)
-            }
-        }
-    }
 
-    // MOUSE TRACKING BLOCK, CAN MARK OUT LATER
-    // NEEDS TO COME LAST TO BE RENDERED ON TOP LAYER
-    text("$mouseXY", color = Colors.BLACK) {
-        val text = this
-        launchImmediately {
-            debug("mouse tracker launched", "mouseTracker")
-            while (true) {
-                text.text = "$mouseXY"
-                text.x = mouseX + 10
-                text.y = mouseY + 10
-                delay(stage?.gameWindow?.timePerFrame ?: 1.milliseconds)
-            }
-        }
-    }
+//    // avatar info debug
+//    text("", color = Colors.BLACK) {
+//        val text = this
+//        launchImmediately {
+//            text.x = 5.0
+//            text.y = 5.0
+//            debug("avatar info box launched")
+//            while (true) {
+//                text.text =
+//                    "XY: ${avatarActualX + avatar.radius}, ${(avatarActualY + avatar.radius)} \nInertia: ${inertia.rise}, ${inertia.run}"
+//                delay(stage?.gameWindow?.timePerFrame ?: 1.milliseconds)
+//            }
+//        }
+//    }
+
+//    // MOUSE TRACKING BLOCK, CAN MARK OUT LATER
+//    // NEEDS TO COME LAST TO BE RENDERED ON TOP LAYER
+//    text("$mouseXY", color = Colors.BLACK) {
+//        val text = this
+//        launchImmediately {
+//            debug("mouse tracker launched", "mouseTracker")
+//            while (true) {
+//                text.text = "$mouseXY"
+//                text.x = mouseX + 10
+//                text.y = mouseY + 10
+//                delay(stage?.gameWindow?.timePerFrame ?: 1.milliseconds)
+//            }
+//        }
+//    }
 }
 
-
+/**
+ * inertia holds the global values for the horizontal and vertical movement
+ * of the avatar. these are VAR because we expect them to change through interaction
+ * with the physics object and game objects as we encounter them
+ */
 data class Inertia(
     var rise: Double = 0.0,
     var run: Double = 0.0,
@@ -204,9 +385,9 @@ data class Inertia(
 
 /**
  * physics holds items we use to calculate movement changes.
- * gravity is a constant that we expect to be subtracted from vertical movement (inertia.rise)
+ * gravity is a constant that we expect to be added to vertical movement (inertia.rise)
  * windResist is a constant that we expect to be multiplied against horizontal movement (inertia.run)
- * friction is a constant that we expect to be subtracted from horizontal movement on the ground (inertia.run)
+ * friction is a constant that we expect to be subtracted from horizontal movement when on the ground (inertia.run)
  */
 data class Physics(
     val gravity: Double = -0.8,
