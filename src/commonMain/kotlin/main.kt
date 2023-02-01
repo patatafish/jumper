@@ -12,6 +12,7 @@ import java.time.LocalDateTime
 // needed for debug options at end of main
 import com.soywiz.korio.async.*
 import com.soywiz.korge.time.*
+import kotlin.math.*
 
 const val DEBUG_COLOR = "\u001b[33;1m"
 const val RESET_COLOR = "\u001b[0m"
@@ -20,14 +21,12 @@ const val RESET_COLOR = "\u001b[0m"
 /**
  *
  * TODO LIST:
- * sky color isnt darkening, figure out why
+ * show direction of avatar (line for now?) maybe trailing dot
  * tile the background items
  * add further layers back
- * show direction of avatar (line for now?) maybe trailing dot
  * add bounce items
  * make sure delete zone is working (create a create/delete log?)
  */
-
 
 
 suspend fun main() = Korge(
@@ -53,9 +52,8 @@ suspend fun main() = Korge(
     // flag for creating game over menu items
     var menuShow = false
 
-    // color control for the skybox
-    val skyBoxColor = SkyColor()
-    debug(skyBoxColor.getHex())
+    // value for limit of atmosphere, or where blue sky will be at 0.0 alpha
+    val atmosphereCeiling = 50_000.0
 
     val inertia = Inertia()
     val physics = Physics()
@@ -79,25 +77,33 @@ suspend fun main() = Korge(
     // create the background layer
     // TODO CAN YOU MAKE A STAGE? ANOTHER VIEW? FIND OUT
     val backDropContainer = container()
-    // backDrop is the skybox behind the scrolling images in the background layer
-    val skyBox = solidRect(
-        width = stage.width * 2,
-        height = stage.height * 2,
-        color = Colors["#" + skyBoxColor.getHex()],
-    )
+    // this image is the skybox behind the scrolling images in the background layer
+    val skyBoxImage = resourcesVfs["iss_image.jpg"].readBitmap().toBMP32()
+    val skyBox = image(skyBoxImage)
+    skyBox.scale = 0.5
+    skyBox.centerOnStage().apply {this.y = halfY.toDouble()}
     backDropContainer.addChild(skyBox)
-    // all other layers are added in front of the skybox
+    // this is the blue sky layer, to fade in and out (using alpha setting) as we go up and down
+    val blueSky = solidRect(
+        width = actualVirtualWidth * 1.2,
+        height = actualVirtualHeight * 1.2,
+        color = Colors.LIGHTBLUE,
+    ).centerOnStage()
+    backDropContainer.addChild(blueSky)
+    // all other layers are added in front of the skybox and blue sky layer
+    //City Skyline imaging
     val cityImage = resourcesVfs["city.png"].readBitmap().toBMP32()
     val skyline = image(cityImage)
-    skyline.y = stage.height - skyline.height
+    skyline.y = actualVirtualHeight - skyline.height
     backDropContainer.addChild(skyline)
+    // layer to represent the ground at 0 elevation
     val groundLayer = solidRect(
         width = stage.width * 1.5,
-        height = 50.0,
+        height = 400.0,
         color = Colors.LIGHTGREEN,
     )
     groundLayer.centerOnStage()
-    groundLayer.y = (stage.height - (groundLayer.height / 2))
+    groundLayer.y = (actualVirtualHeight - 25.0)
     backDropContainer.addChild(groundLayer)
 
     // create the avatar
@@ -112,8 +118,10 @@ suspend fun main() = Korge(
     )
     avatar.x = 0.0
     avatar.alignBottomToTopOf(groundLayer, 10)
+    // variables to help locate avatar and control scene
     var avatarActualX = avatar.x
     var avatarActualY = avatar.y
+    var altitude = 0.0
     stage.addChild(avatar)
 
 
@@ -128,8 +136,11 @@ suspend fun main() = Korge(
 
 
     debug("adding the updater")
-    addFixedUpdater(30.timesPerSecond) {
+    addFixedUpdater(60.timesPerSecond) {
 //    addFixedUpdater(stage.gameWindow.timePerFrame) {
+
+        // find relative altitude of avatar
+        altitude = avatarActualY.absoluteValue - actualVirtualHeight
 
         // we have launched, but it is not game over
         if (launched && !gameOver) {
@@ -139,7 +150,7 @@ suspend fun main() = Korge(
                 debug("Round has ended, score ${avatarActualX.roundDecimalPlaces(2)}")
                 inertia.rise = 0.0
                 inertia.run = 0.0
-                // set launched to false to stop updating avatar
+                // set launched false to stop updating avatar
                 launched = false
                 // set flags to get game over menu
                 gameOver = true
@@ -163,7 +174,7 @@ suspend fun main() = Korge(
             // if the avatar has moved past mid-screen, we move the background up or down
             when (avatarActualY) {
                 // when we are within 1/2 window height, move the avatar
-                in halfY.toDouble()..(stage.actualVirtualHeight + avatar.radius) -> {
+                in halfY.toDouble()..(stage.actualVirtualHeight * 2.0) -> {
                     avatar.y = avatarActualY
                     groundLayer.visible = true
                 }
@@ -172,25 +183,39 @@ suspend fun main() = Korge(
                     avatar.y = halfY.toDouble()
                     // move the background in a parallax manner
                     groundLayer.visible = false
+
+
                     skyline.y += (inertia.rise * 0.5)
                 }
             }
 
-            // darken the skybox the higher we go, lighten it as we approach 0 altitude
-            skyBoxColor.darken()
-            debug(skyBoxColor.getHex())
-            skyBox.color = Colors["#${skyBoxColor.getHex()}"]
+            // move the space image
+            skyBox.y = if (altitude < atmosphereCeiling) {
+                halfY - (halfY * (altitude / atmosphereCeiling))
+            } else {
+                0.0
+            }
+
+            // adjusting the alpha of the blue sky layer to expose space behind it
+            blueSky.alpha = 1.0 - (((2 * altitude) / atmosphereCeiling) - 1.0)
 
 
             // We adjust the inertia using the physics numbers here, after all movement is completed this frame
-            inertia.rise += physics.gravity
+            if (inertia.rise >= physics.terminalVelocity) {
+                inertia.rise += physics.gravity
+            } else {
+                inertia.rise = physics.terminalVelocity
+            }
             inertia.run *= physics.windResist
 
             // landing
             if (avatar.collidesWith(groundLayer)) {
                 // TODO CAN WE BOUNCE HERE? DEPENDS ON INCOMING SPEED
+                // stop the falling
                 inertia.rise = 0.0
-                if (avatarActualY < groundLayer.y) avatar.alignBottomToTopOf(groundLayer)
+                // if the avatar has fallen through the ground, reset them to ground level
+                avatarActualY = groundLayer.y - avatar.radius
+                // create friction with ground to slow the avatar
                 if (inertia.run > 0) inertia.run -= physics.friction
             }
         } else if (!gameOver) { // we have not launched, but still not game over (before round starts)
@@ -201,8 +226,8 @@ suspend fun main() = Korge(
                  *8888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
                  */
                 avatar.alignBottomToTopOf(groundLayer, 10)
-                inertia.rise += 50.0
-                inertia.run += 50.0
+                inertia.rise += 290.0
+                inertia.run += 10.0
                 launched = true
             }
         }
@@ -352,11 +377,10 @@ suspend fun main() = Korge(
                         inertia.run = 0.0
 
                         debug("resetting the background")
-                        skyBox.color = Colors.WHITE
+                        skyBox.y = halfY.toDouble()
                         skyline.y = actualVirtualHeight - skyline.height
                         skyline.x = 0.0
-                        groundLayer.centerOnStage()
-                        groundLayer.y = (actualVirtualHeight - (groundLayer.height / 2))
+                        groundLayer.visible = true
 
                         debug("resetting the avatar")
                         launched = false
@@ -381,10 +405,11 @@ suspend fun main() = Korge(
         launchImmediately {
             text.x = 5.0
             text.y = 5.0
+            text.color = Colors.YELLOW
             debug("avatar info box launched")
             while (true) {
                 text.text =
-                    "XY: ${avatarActualX + avatar.radius}, ${(avatarActualY + avatar.radius)} \nInertia: ${inertia.rise}, ${inertia.run}"
+                    "XY: ${avatarActualX.roundDecimalPlaces(2)}, ${(avatarActualY.roundDecimalPlaces(2))}, ${altitude.roundDecimalPlaces(2)}\nInertia: ${inertia.rise.roundDecimalPlaces(2)}, ${inertia.run.roundDecimalPlaces(2)}"
                 delay(stage?.gameWindow?.timePerFrame ?: 1.milliseconds)
             }
         }
@@ -394,6 +419,7 @@ suspend fun main() = Korge(
     // NEEDS TO COME LAST TO BE RENDERED ON TOP LAYER
     text("$mouseXY", color = Colors.BLACK) {
         val text = this
+        text.color = Colors.YELLOW
         launchImmediately {
             debug("mouse tracker launched", "mouseTracker")
             while (true) {
@@ -426,44 +452,45 @@ data class Physics(
     val gravity: Double = -0.8,
     val windResist: Double = 0.99,
     val friction: Double = 1.0,
+    val terminalVelocity: Double = -100.0,
 )
 
-class SkyColor {
-    private var red = 55
-    private var green = 200
-    private var blue = 255
-    private var hexString = "37C8FF"
-    private val colorList = listOf(red, green, blue)
-
-    fun getHex() = hexString
-
-    fun darken() {
-        if (red > 1) red--
-        if (green > 1) green--
-        if (blue > 1) blue--
-        setHex()
-    }
-
-    fun lighten() {
-        if (red < 55) red++
-        if (green < 200) green++
-        if (blue < 255) blue++
-        setHex()
-    }
-
-    private fun setHex () {
-        var tempString = ""
-        for (color in colorList) {
-            tempString += if (color < 16) {
-                "0" + color.toString(16)
-            } else {
-                color.toString(16)
-            }
-        }
-        hexString = tempString
-    }
-
-}
+//class SkyColor {
+//    private var red = 55
+//    private var green = 200
+//    private var blue = 255
+//    private var hexString = "37C8FF"
+//    private val colorList = listOf(red, green, blue)
+//
+//    fun getHex() = hexString
+//
+//    fun darken() {
+//        if (red > 1) red--
+//        if (green > 1) green--
+//        if (blue > 1) blue--
+//        setHex()
+//    }
+//
+//    fun lighten() {
+//        if (red < 55) red++
+//        if (green < 200) green++
+//        if (blue < 255) blue++
+//        setHex()
+//    }
+//
+//    private fun setHex () {
+//        var tempString = ""
+//        for (color in colorList) {
+//            tempString += if (color < 16) {
+//                "0" + color.toString(16)
+//            } else {
+//                color.toString(16)
+//            }
+//        }
+//        hexString = tempString
+//    }
+//
+//}
 
 
 fun debug(message: String, name: String = "UNKNOWN") {
