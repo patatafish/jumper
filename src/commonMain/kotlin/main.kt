@@ -14,6 +14,7 @@ import com.soywiz.korio.async.*
 import com.soywiz.korge.time.*
 import kotlin.math.*
 
+
 const val DEBUG_COLOR = "\u001b[33;1m"
 const val RESET_COLOR = "\u001b[0m"
 
@@ -21,10 +22,12 @@ const val RESET_COLOR = "\u001b[0m"
 /**
  *
  * TODO LIST:
+ * add bounce items
  * show direction of avatar (line for now?) maybe trailing dot
  * tile the background items
  * add further layers back
- * add bounce items
+ * all leyers should use the floor/cieling methods that the space layer uses
+ *
  * make sure delete zone is working (create a create/delete log?)
  */
 
@@ -226,7 +229,7 @@ suspend fun main() = Korge(
                  *8888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888
                  */
                 avatar.alignBottomToTopOf(groundLayer, 10)
-                inertia.rise += 290.0
+                inertia.rise += 270.0
                 inertia.run += 10.0
                 launched = true
             }
@@ -432,65 +435,9 @@ suspend fun main() = Korge(
     }
 }
 
-/**
- * inertia holds the global values for the horizontal and vertical movement
- * of the avatar. these are VAR because we expect them to change through interaction
- * with the physics object and game objects as we encounter them
- */
-data class Inertia(
-    var rise: Double = 0.0,
-    var run: Double = 0.0,
-)
 
-/**
- * physics holds items we use to calculate movement changes.
- * gravity is a constant that we expect to be added to vertical movement (inertia.rise)
- * windResist is a constant that we expect to be multiplied against horizontal movement (inertia.run)
- * friction is a constant that we expect to be subtracted from horizontal movement when on the ground (inertia.run)
- */
-data class Physics(
-    val gravity: Double = -0.8,
-    val windResist: Double = 0.99,
-    val friction: Double = 1.0,
-    val terminalVelocity: Double = -100.0,
-)
 
-//class SkyColor {
-//    private var red = 55
-//    private var green = 200
-//    private var blue = 255
-//    private var hexString = "37C8FF"
-//    private val colorList = listOf(red, green, blue)
-//
-//    fun getHex() = hexString
-//
-//    fun darken() {
-//        if (red > 1) red--
-//        if (green > 1) green--
-//        if (blue > 1) blue--
-//        setHex()
-//    }
-//
-//    fun lighten() {
-//        if (red < 55) red++
-//        if (green < 200) green++
-//        if (blue < 255) blue++
-//        setHex()
-//    }
-//
-//    private fun setHex () {
-//        var tempString = ""
-//        for (color in colorList) {
-//            tempString += if (color < 16) {
-//                "0" + color.toString(16)
-//            } else {
-//                color.toString(16)
-//            }
-//        }
-//        hexString = tempString
-//    }
-//
-//}
+
 
 
 fun debug(message: String, name: String = "UNKNOWN") {
